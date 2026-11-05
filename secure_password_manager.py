@@ -111,6 +111,55 @@ def unlock_vault(root, connection):
     return fernet
 
 
+
+def create_visibility_toggle(parent, entry, bg="white"):
+    eye = tk.Canvas(
+        parent,
+        width=30,
+        height=26,
+        bg=bg,
+        highlightthickness=0,
+        cursor="hand2"
+    )
+
+    def draw_icon():
+        eye.delete("all")
+
+        # Draw the eye outline
+        eye.create_oval(
+            4, 4, 26, 22,
+            outline="#334155",
+            width=2
+        )
+
+        # Draw the pupil
+        eye.create_oval(
+            11, 8, 19, 18,
+            fill="#334155",
+            outline="#334155"
+        )
+
+        # Draw a slash when the password is hidden
+        if entry.cget("show") == "*":
+            eye.create_line(
+                3, 23, 27, 2,
+                fill="#334155",
+                width=2
+            )
+
+    def toggle_visibility(event=None):
+        if entry.cget("show") == "*":
+            entry.config(show="")
+        else:
+            entry.config(show="*")
+
+        draw_icon()
+
+    eye.bind("<Button-1>", toggle_visibility)
+
+    draw_icon()
+    return eye
+
 def run_app():
     root = tk.Tk()
     root.withdraw()
@@ -180,8 +229,28 @@ def run_app():
     username_entry.grid(row=3, column=0, sticky="ew", ipady=5)
 
     make_label("Password", 4)
-    password_entry = tk.Entry(form, font=("Segoe UI", 10), width=30, show="*")
-    password_entry.grid(row=5, column=0, sticky="ew", ipady=5)
+    password_frame = tk.Frame(form, bg="white")
+    password_frame.grid(row=5, column=0, sticky="ew")
+    password_frame.grid_columnconfigure(0, weight=1)
+
+    password_entry = tk.Entry(
+        password_frame,
+        font=("Segoe UI", 10),
+        show="*"
+    )
+    password_entry.grid(
+        row=0,
+        column=0,
+        sticky="ew",
+        ipady=5
+    )
+
+    visibility_toggle = create_visibility_toggle(
+        password_frame,
+        password_entry
+    )
+    visibility_toggle.grid(row=0, column=1, padx=(6, 0))
+
     form.grid_columnconfigure(0, weight=1)
 
     def refresh_entries():
@@ -330,21 +399,56 @@ def run_app():
                 font=("Segoe UI", 10),
                 bg="white",
                 fg="#334155"
-            ).grid(row=row_num, column=0, sticky="w", pady=(8, 4))
-
-            entry = tk.Entry(
-                form,
-                font=("Segoe UI", 10),
-                show=show
-            )
-            entry.grid(
-                row=row_num + 1,
+            ).grid(
+                row=row_num,
                 column=0,
-                sticky="ew",
-                ipady=5
+                sticky="w",
+                pady=(8, 4)
             )
-            entry.insert(0, value)
 
+            if show == "*":
+                password_frame = tk.Frame(form, bg="white")
+                password_frame.grid(
+                    row=row_num + 1,
+                    column=0,
+                    sticky="ew"
+                )
+                password_frame.grid_columnconfigure(0, weight=1)
+
+                entry = tk.Entry(
+                    password_frame,
+                    font=("Segoe UI", 10),
+                    show=show
+                )
+                entry.grid(
+                    row=0,
+                    column=0,
+                    sticky="ew",
+                    ipady=5
+                )
+
+                visibility_toggle = create_visibility_toggle(
+                    password_frame,
+                    entry
+                )
+                visibility_toggle.grid(
+                    row=0,
+                    column=1,
+                    padx=(6, 0)
+                )
+            else:
+                entry = tk.Entry(
+                    form,
+                    font=("Segoe UI", 10)
+                )
+                entry.grid(
+                    row=row_num + 1,
+                    column=0,
+                    sticky="ew",
+                    ipady=5
+                )
+
+            entry.insert(0, value)
             return entry
 
         form.grid_columnconfigure(0, weight=1)
@@ -433,9 +537,7 @@ def run_app():
         font=("Segoe UI", 9),
     ).grid(row=7, column=0, sticky="w", pady=(10, 0))
 
-    list_frame = tk.Frame(saved, bg="white")
-    list_frame.grid(row=0, column=0, sticky="nsew")
-        # Search bar
+    # Search bar
     search_var = tk.StringVar()
 
     search_label = tk.Label(
@@ -518,7 +620,7 @@ def run_app():
         relief="flat",
         pady=8,
     ).grid(row=0, column=2, sticky="ew", padx=(5, 0))
-    
+
     tk.Button(
         saved, text="Refresh list", command=refresh_entries,
         font=("Segoe UI", 9), bg="#e2e8f0", fg="#1e293b", relief="flat", pady=5,
@@ -536,3 +638,4 @@ def run_app():
 
 if __name__ == "__main__":
     run_app()
+
