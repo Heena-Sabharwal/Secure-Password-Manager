@@ -92,11 +92,12 @@ Secure Password Manager/
 
 ## Future Improvements
 
-- Password generator with customizable strength and length.
-- Automatic clipboard clearing after a specified duration.
-- Password strength evaluation.
-- Export and import of encrypted backups.
-- Improved user interface and accessibility.
+- **Browser Integration:** Integrate with web browsers to detect login pages and help users access their saved credentials.
+- **Password Generator:** Generate strong passwords with customizable length and character types.
+- **Automatic Clipboard Clearing:** Clear copied passwords from the clipboard after a specified duration.
+- **Password Strength Evaluation:** Assess password strength and identify weak credentials.
+- **Secure Backup and Restore:** Support exporting and importing encrypted credential backups.
+- **Improved User Interface:** Enhance the application's usability and accessibility.
 
 ## Author
 
