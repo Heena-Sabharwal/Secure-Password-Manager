@@ -38,6 +38,19 @@ def create_tables(connection):
             password BLOB NOT NULL
         )"""
     )
+    # Add favourites support to existing databases
+    columns = [
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(entries)"
+        ).fetchall()
+    ]
+
+    if "is_favorite" not in columns:
+        connection.execute(
+            """ALTER TABLE entries
+            ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0"""
+        )
     connection.commit()
 
 
@@ -224,6 +237,77 @@ def create_copy_icon(parent, command, bg="white"):
 
     return icon
 
+def create_star_icon(parent, command, bg="white"):
+    star = tk.Canvas(
+        parent,
+        width=34,
+        height=34,
+        bg=bg,
+        highlightthickness=0,
+        cursor="hand2"
+    )
+
+    points = [
+        17, 3,
+        20.5, 12,
+        30, 12.5,
+        23, 19,
+        25, 29,
+        17, 24,
+        9, 29,
+        11, 19,
+        4, 12.5,
+        13.5, 12
+    ]
+
+    star.create_polygon(
+        points,
+        fill=bg,
+        outline="#d97706",
+        width=2,
+        tags="star"
+    )
+
+    tooltip = None
+
+    def show_tooltip(event):
+        nonlocal tooltip
+
+        tooltip = tk.Toplevel(parent)
+        tooltip.wm_overrideredirect(True)
+        tooltip.wm_geometry(
+            f"+{event.x_root + 10}+{event.y_root + 10}"
+        )
+
+        tk.Label(
+            tooltip,
+            text="Favourite",
+            bg="#1e293b",
+            fg="white",
+            font=("Segoe UI", 9),
+            padx=7,
+            pady=3
+        ).pack()
+
+    def hide_tooltip(event):
+        nonlocal tooltip
+
+        if tooltip is not None:
+            tooltip.destroy()
+            tooltip = None
+
+    star.bind("<Enter>", show_tooltip)
+    star.bind("<Leave>", hide_tooltip)
+    star.bind("<Button-1>", lambda event: command())
+
+    def set_state(is_favorite):
+        star.itemconfig(
+            "star",
+            fill="#fbbf24" if is_favorite else bg
+        )
+
+    return star, set_state
+
 def run_app():
     root = tk.Tk()
     root.withdraw()
@@ -323,28 +407,33 @@ def run_app():
         search_query = search_var.get().strip().casefold()
 
         rows = connection.execute(
-            "SELECT id, website, username FROM entries ORDER BY id DESC"
+            "SELECT id, website, username, is_favorite FROM entries ORDER BY id DESC"
         ).fetchall()
 
-        for entry_id, encrypted_website, encrypted_username in rows:
+        for entry_id, encrypted_website, encrypted_username, is_favorite in rows:
             try:
                 website = fernet.decrypt(bytes(encrypted_website)).decode("utf-8")
                 username = fernet.decrypt(bytes(encrypted_username)).decode("utf-8")
 
-                if (search_query in website.casefold() or
-                        search_query in username.casefold()):
-                    listbox.insert(
-                        tk.END,
-                        f"{entry_id} | {website} | {username}"
-                    )
+                favorite_symbol = "★" if is_favorite else ""
+
+                display_text = (
+                    f"{entry_id} | {website} | {username} {favorite_symbol}"
+                )
+
+                # Keep your existing search filtering here.
+                if (
+                    not search_query
+                    or search_query in website.casefold()
+                    or search_query in username.casefold()
+                ):
+                    listbox.insert(tk.END, display_text)
 
             except (InvalidToken, UnicodeDecodeError, TypeError):
-                if not search_query:
-                    listbox.insert(
-                        tk.END,
-                        f"{entry_id} | [Unable to decrypt entry]"
-                    )
-
+                listbox.insert(
+                    tk.END,
+                    f"{entry_id} | [Unable to decrypt entry]"
+                )
     def add_entry():
         website = website_entry.get().strip()
         username = username_entry.get().strip()
@@ -444,6 +533,72 @@ def run_app():
             parent=root
         )
 
+    def update_favorite_icon(event=None):
+        selection = listbox.curselection()
+
+        if not selection:
+            set_favorite_state(False)
+            return
+
+        try:
+            entry_id = int(
+                listbox.get(selection[0]).split("|", 1)[0].strip()
+            )
+        except ValueError:
+            set_favorite_state(False)
+            return
+
+        row = connection.execute(
+            "SELECT is_favorite FROM entries WHERE id = ?",
+            (entry_id,)
+        ).fetchone()
+
+        set_favorite_state(bool(row[0]) if row else False)
+
+
+    def toggle_favorite():
+        entry_id = selected_id()
+
+        if entry_id is None:
+            return
+
+        row = connection.execute(
+            "SELECT is_favorite FROM entries WHERE id = ?",
+            (entry_id,)
+        ).fetchone()
+
+        if row is None:
+            messagebox.showerror(
+                "Not found",
+                "That login no longer exists.",
+                parent=root
+            )
+            refresh_entries()
+            return
+
+        new_state = 0 if row[0] else 1
+
+        with connection:
+            connection.execute(
+                "UPDATE entries SET is_favorite = ? WHERE id = ?",
+                (new_state, entry_id)
+            )
+
+        # Refresh the list while restoring the selected login.
+        refresh_entries()
+
+        for index in range(listbox.size()):
+            displayed_id = int(
+                listbox.get(index).split("|", 1)[0].strip()
+            )
+
+            if displayed_id == entry_id:
+                listbox.selection_set(index)
+                listbox.activate(index)
+                break
+
+        update_favorite_icon()
+    
     def edit_entry():
         entry_id = selected_id()
 
@@ -678,6 +833,10 @@ def run_app():
         borderwidth=0, highlightthickness=1, highlightbackground="#cbd5e1",
     )
     listbox.grid(row=0, column=0, sticky="nsew")
+    listbox.bind(
+        "<<ListboxSelect>>",
+        update_favorite_icon
+    )
     scrollbar.config(command=listbox.yview)
 
     buttons = tk.Frame(saved, bg="white")
@@ -686,6 +845,7 @@ def run_app():
     buttons.grid_columnconfigure(1, weight=1)
     buttons.grid_columnconfigure(2, weight=1)
     buttons.grid_columnconfigure(3, weight=0)
+    buttons.grid_columnconfigure(4, weight=0)
 
 #View Password, Edit and Delete buttons
 
@@ -737,6 +897,19 @@ def run_app():
         row=0,
         column=3,
         padx=(10, 0),
+        sticky="e"
+    )
+
+    favorite_icon, set_favorite_state = create_star_icon(
+        buttons,
+        toggle_favorite,
+        bg="white"
+    )
+
+    favorite_icon.grid(
+        row=0,
+        column=4,
+        padx=(5, 0),
         sticky="e"
     )
     tk.Button(
