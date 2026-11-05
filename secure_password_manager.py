@@ -163,7 +163,7 @@ def run_app():
         bg="white", fg="#172554", padx=12, pady=12
     )
     saved.grid(row=0, column=1, sticky="nsew")
-    saved.grid_rowconfigure(0, weight=1)
+    saved.grid_rowconfigure(2, weight=1)
     saved.grid_columnconfigure(0, weight=1)
 
     def make_label(text, row):
@@ -186,16 +186,31 @@ def run_app():
 
     def refresh_entries():
         listbox.delete(0, tk.END)
+
+        search_query = search_var.get().strip().casefold()
+
         rows = connection.execute(
             "SELECT id, website, username FROM entries ORDER BY id DESC"
         ).fetchall()
+
         for entry_id, encrypted_website, encrypted_username in rows:
             try:
                 website = fernet.decrypt(bytes(encrypted_website)).decode("utf-8")
                 username = fernet.decrypt(bytes(encrypted_username)).decode("utf-8")
-                listbox.insert(tk.END, f"{entry_id} | {website} | {username}")
+
+                if (search_query in website.casefold() or
+                        search_query in username.casefold()):
+                    listbox.insert(
+                        tk.END,
+                        f"{entry_id} | {website} | {username}"
+                    )
+
             except (InvalidToken, UnicodeDecodeError, TypeError):
-                listbox.insert(tk.END, f"{entry_id} | [Unable to decrypt entry]")
+                if not search_query:
+                    listbox.insert(
+                        tk.END,
+                        f"{entry_id} | [Unable to decrypt entry]"
+                    )
 
     def add_entry():
         website = website_entry.get().strip()
@@ -279,6 +294,32 @@ def run_app():
 
     list_frame = tk.Frame(saved, bg="white")
     list_frame.grid(row=0, column=0, sticky="nsew")
+        # Search bar
+    search_var = tk.StringVar()
+
+    search_label = tk.Label(
+        saved,
+        text="Search credentials",
+        font=("Segoe UI", 10, "bold"),
+        bg="white",
+        fg="#334155"
+    )
+    search_label.grid(row=0, column=0, sticky="w", pady=(0, 5))
+
+    search_entry = tk.Entry(
+        saved,
+        textvariable=search_var,
+        font=("Segoe UI", 10),
+        relief="solid",
+        borderwidth=1
+    )
+    search_entry.grid(row=1, column=0, sticky="ew", pady=(0, 10), ipady=5)
+
+    search_entry.bind("<KeyRelease>", lambda event: refresh_entries())
+
+    list_frame = tk.Frame(saved, bg="white")
+    list_frame.grid(row=2, column=0, sticky="nsew")
+
     list_frame.grid_rowconfigure(0, weight=1)
     list_frame.grid_columnconfigure(0, weight=1)
     scrollbar = tk.Scrollbar(list_frame)
@@ -292,7 +333,7 @@ def run_app():
     scrollbar.config(command=listbox.yview)
 
     buttons = tk.Frame(saved, bg="white")
-    buttons.grid(row=1, column=0, sticky="ew", pady=(12, 0))
+    buttons.grid(row=3, column=0, sticky="ew", pady=(12, 0))
     buttons.grid_columnconfigure(0, weight=1)
     buttons.grid_columnconfigure(1, weight=1)
     tk.Button(
@@ -308,7 +349,7 @@ def run_app():
     tk.Button(
         saved, text="Refresh list", command=refresh_entries,
         font=("Segoe UI", 9), bg="#e2e8f0", fg="#1e293b", relief="flat", pady=5,
-    ).grid(row=2, column=0, sticky="e", pady=(8, 0))
+    ).grid(row=4, column=0, sticky="e", pady=(8, 0))
 
     def close_app():
         connection.close()
