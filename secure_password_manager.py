@@ -160,6 +160,70 @@ def create_visibility_toggle(parent, entry, bg="white"):
     draw_icon()
     return eye
 
+def create_copy_icon(parent, command, bg="white"):
+    icon = tk.Canvas(
+        parent,
+        width=32,
+        height=32,
+        bg=bg,
+        highlightthickness=0,
+        cursor="hand2"
+    )
+
+    # Draw clipboard outline
+    icon.create_rectangle(
+        8, 6, 24, 27,
+        outline="#334155",
+        width=2
+    )
+
+    # Draw clipboard clip
+    icon.create_rectangle(
+        12, 3, 20, 9,
+        outline="#334155",
+        width=2,
+        fill=bg
+    )
+
+    # Draw lines on the clipboard
+    icon.create_line(12, 14, 20, 14, fill="#334155", width=1)
+    icon.create_line(12, 18, 20, 18, fill="#334155", width=1)
+    icon.create_line(12, 22, 18, 22, fill="#334155", width=1)
+
+    tooltip = None
+
+    def show_tooltip(event):
+        nonlocal tooltip
+
+        tooltip = tk.Toplevel(parent)
+        tooltip.wm_overrideredirect(True)
+        tooltip.wm_geometry(
+            f"+{event.x_root + 10}+{event.y_root + 10}"
+        )
+
+        tk.Label(
+            tooltip,
+            text="Copy Password",
+            bg="#1e293b",
+            fg="white",
+            font=("Segoe UI", 9),
+            padx=7,
+            pady=3
+        ).pack()
+
+    def hide_tooltip(event):
+        nonlocal tooltip
+
+        if tooltip is not None:
+            tooltip.destroy()
+            tooltip = None
+
+    icon.bind("<Enter>", show_tooltip)
+    icon.bind("<Leave>", hide_tooltip)
+    icon.bind("<Button-1>", lambda event: command())
+
+    return icon
+
 def run_app():
     root = tk.Tk()
     root.withdraw()
@@ -337,6 +401,47 @@ def run_app():
             f"Login for {website}",
             f"Website: {website}\nUsername: {username}\n\nPassword: {password}",
             parent=root,
+        )
+
+    def copy_password():
+        entry_id = selected_id()
+
+        if entry_id is None:
+            return
+
+        row = connection.execute(
+            "SELECT password FROM entries WHERE id = ?",
+            (entry_id,)
+        ).fetchone()
+
+        if row is None:
+            messagebox.showerror(
+                "Not found",
+                "That login no longer exists.",
+                parent=root
+            )
+            refresh_entries()
+            return
+
+        try:
+            password = fernet.decrypt(bytes(row[0])).decode("utf-8")
+
+        except (InvalidToken, UnicodeDecodeError, TypeError):
+            messagebox.showerror(
+                "Decryption error",
+                "This password could not be decrypted.",
+                parent=root
+            )
+            return
+
+        root.clipboard_clear()
+        root.clipboard_append(password)
+        root.update()
+
+        messagebox.showinfo(
+            "Copied",
+            "Password copied to clipboard.",
+            parent=root
         )
 
     def edit_entry():
@@ -580,6 +685,7 @@ def run_app():
     buttons.grid_columnconfigure(0, weight=1)
     buttons.grid_columnconfigure(1, weight=1)
     buttons.grid_columnconfigure(2, weight=1)
+    buttons.grid_columnconfigure(3, weight=0)
 
 #View Password, Edit and Delete buttons
 
@@ -621,6 +727,18 @@ def run_app():
         pady=8,
     ).grid(row=0, column=2, sticky="ew", padx=(5, 0))
 
+    copy_icon = create_copy_icon(
+        buttons,
+        copy_password,
+        bg="white"
+    )
+
+    copy_icon.grid(
+        row=0,
+        column=3,
+        padx=(10, 0),
+        sticky="e"
+    )
     tk.Button(
         saved, text="Refresh list", command=refresh_entries,
         font=("Segoe UI", 9), bg="#e2e8f0", fg="#1e293b", relief="flat", pady=5,
