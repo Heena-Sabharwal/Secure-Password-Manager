@@ -270,6 +270,147 @@ def run_app():
             parent=root,
         )
 
+    def edit_entry():
+        entry_id = selected_id()
+
+        if entry_id is None:
+            return
+
+        row = connection.execute(
+            "SELECT website, username, password FROM entries WHERE id = ?",
+            (entry_id,)
+        ).fetchone()
+
+        if row is None:
+            messagebox.showerror(
+                "Not found",
+                "That login no longer exists.",
+                parent=root
+            )
+            refresh_entries()
+            return
+
+        try:
+            website = fernet.decrypt(bytes(row[0])).decode("utf-8")
+            username = fernet.decrypt(bytes(row[1])).decode("utf-8")
+            password = fernet.decrypt(bytes(row[2])).decode("utf-8")
+
+        except (InvalidToken, UnicodeDecodeError, TypeError):
+            messagebox.showerror(
+                "Decryption error",
+                "This saved entry could not be decrypted.",
+                parent=root
+            )
+            return
+
+        # Create editing window
+        edit_window = tk.Toplevel(root)
+        edit_window.title("Edit Credential")
+        edit_window.geometry("400x380")
+        edit_window.resizable(False, False)
+        edit_window.configure(bg="white")
+        edit_window.transient(root)
+        edit_window.grab_set()
+
+        tk.Label(
+            edit_window,
+            text="Edit Credential",
+            font=("Segoe UI", 16, "bold"),
+            bg="white",
+            fg="#172554"
+        ).pack(pady=(20, 15))
+
+        form = tk.Frame(edit_window, bg="white", padx=25)
+        form.pack(fill="both", expand=True)
+
+        def create_field(label_text, value, row_num, show=None):
+            tk.Label(
+                form,
+                text=label_text,
+                font=("Segoe UI", 10),
+                bg="white",
+                fg="#334155"
+            ).grid(row=row_num, column=0, sticky="w", pady=(8, 4))
+
+            entry = tk.Entry(
+                form,
+                font=("Segoe UI", 10),
+                show=show
+            )
+            entry.grid(
+                row=row_num + 1,
+                column=0,
+                sticky="ew",
+                ipady=5
+            )
+            entry.insert(0, value)
+
+            return entry
+
+        form.grid_columnconfigure(0, weight=1)
+
+        website_field = create_field(
+            "Website / service", website, 0
+        )
+
+        username_field = create_field(
+            "Username / email", username, 2
+        )
+
+        password_field = create_field(
+            "Password", password, 4, show="*"
+        )
+
+        def save_changes():
+            new_website = website_field.get().strip()
+            new_username = username_field.get().strip()
+            new_password = password_field.get()
+
+            if not new_website or not new_username or not new_password:
+                messagebox.showwarning(
+                    "Missing information",
+                    "Fill in all three fields.",
+                    parent=edit_window
+                )
+                return
+
+            encrypted_values = (
+                fernet.encrypt(new_website.encode("utf-8")),
+                fernet.encrypt(new_username.encode("utf-8")),
+                fernet.encrypt(new_password.encode("utf-8")),
+                entry_id
+            )
+
+            with connection:
+                connection.execute(
+                    """UPDATE entries
+                    SET website = ?, username = ?, password = ?
+                    WHERE id = ?""",
+                    encrypted_values
+                )
+
+            edit_window.destroy()
+            refresh_entries()
+
+            messagebox.showinfo(
+                "Updated",
+                "Credential updated successfully.",
+                parent=root
+            )
+
+        tk.Button(
+            edit_window,
+            text="Save Changes",
+            command=save_changes,
+            font=("Segoe UI", 10, "bold"),
+            bg="#0f766e",
+            fg="white",
+            activebackground="#115e59",
+            activeforeground="white",
+            relief="flat",
+            pady=9
+        ).pack(fill="x", padx=25, pady=(10, 20))
+        
     def delete_entry():
         entry_id = selected_id()
         if entry_id is None:
@@ -336,16 +477,48 @@ def run_app():
     buttons.grid(row=3, column=0, sticky="ew", pady=(12, 0))
     buttons.grid_columnconfigure(0, weight=1)
     buttons.grid_columnconfigure(1, weight=1)
+    buttons.grid_columnconfigure(2, weight=1)
+
+#View Password, Edit and Delete buttons
+
     tk.Button(
-        buttons, text="View password", command=view_password,
-        font=("Segoe UI", 10, "bold"), bg="#0f766e", fg="white",
-        activebackground="#115e59", activeforeground="white", relief="flat", pady=8,
+        buttons,
+        text="View password",
+        command=view_password,
+        font=("Segoe UI", 10, "bold"),
+        bg="#0f766e", fg="white",
+        activebackground="#115e59",
+        activeforeground="white",
+        relief="flat",
+        pady=8,
     ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+
     tk.Button(
-        buttons, text="Delete selected", command=delete_entry,
-        font=("Segoe UI", 10, "bold"), bg="#b91c1c", fg="white",
-        activebackground="#991b1b", activeforeground="white", relief="flat", pady=8,
-    ).grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        buttons,
+        text="Edit selected",
+        command=edit_entry,
+        font=("Segoe UI", 10, "bold"),
+        bg="#2563eb",
+        fg="white",
+        activebackground="#1d4ed8",
+        activeforeground="white",
+        relief="flat",
+        pady=8,
+    ).grid(row=0, column=1, sticky="ew", padx=5)
+
+    tk.Button(
+        buttons,
+        text="Delete selected",
+        command=delete_entry,
+        font=("Segoe UI", 10, "bold"),
+        bg="#b91c1c",
+        fg="white",
+        activebackground="#991b1b",
+        activeforeground="white",
+        relief="flat",
+        pady=8,
+    ).grid(row=0, column=2, sticky="ew", padx=(5, 0))
+    
     tk.Button(
         saved, text="Refresh list", command=refresh_entries,
         font=("Segoe UI", 9), bg="#e2e8f0", fg="#1e293b", relief="flat", pady=5,
